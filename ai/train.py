@@ -63,7 +63,7 @@ for epoch in range(config.n_epochs):
         loss.backward()
         optimizer.step()
 
-model_fn = './model/test'
+model_fn = './model/test.pt'
 torch.save(
     {
         'model': model.state_dict(),
