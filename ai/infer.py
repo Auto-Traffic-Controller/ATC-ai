@@ -1,12 +1,13 @@
 import sys
 
+import requests
+
 import numpy as np
 import pandas as pd
+import sentencepiece as spm
 
 import torch
 from model.DDoS_discriminator import Discriminator
-
-import sentencepiece as spm
 
 model = Discriminator(256)
 state = torch.load(f='./ai/model/test.pt', map_location=torch.device('cpu'))
@@ -24,13 +25,9 @@ for key in list(state['model'].keys()):
         state['model'].pop(key)
 model.load_state_dict(state['model'])
 
-filename = sys.argv[1]
-data = pd.read_json(filename)['_source']
-
 sp = spm.SentencePieceProcessor()
 vocab_file = "packet.model"
 sp.load(vocab_file)
-
 
 used_packet = ["_source:layers:frame:frame.time",
                "_source:layers:frame:frame.number",
@@ -62,28 +59,39 @@ def get_value_from_stacked_dictionary(data, keys):
             return 'None'
 
 
-for i, packet in enumerate(data.values):
-    temp = []
-    for packet_name in used_packet:
-        packet_name = packet_name.split(":")
-        temp.append(get_value_from_stacked_dictionary(packet, packet_name[1:]))
+while True:
+    filename = sys.argv[1]
+    data = pd.read_json(filename)['_source']
+    ip = []
 
-    temp = sp.encode_as_ids('<cls>'+'<sep>'.join(temp))
-    data[i] = [temp, len(temp)]
+    for i, packet in enumerate(data.values):
+        temp = []
+        ip.append(get_value_from_stacked_dictionary(packet, ["layers", "ip", "ip.src"]))
+        for packet_name in used_packet:
+            packet_name = packet_name.split(":")
+            temp.append(get_value_from_stacked_dictionary(packet, packet_name[1:]))
 
-max_length = 90
-for d in data:
-    gap = max_length - d[1]
-    if gap > 0:
-        d[0] = d[0] + [3] * gap  # [3] is pad token id
-    else:
-        d[0] = d[0][:max_length]
-        d[1] = max_length
+        temp = sp.encode_as_ids('<cls>'+'<sep>'.join(temp))
+        data[i] = [temp, len(temp)]
+    max_length = 90
+    for d in data:
+        gap = max_length - d[1]
+        if gap > 0:
+            d[0] = d[0] + [3] * gap  # [3] is pad token id
+        else:
+            d[0] = d[0][:max_length]
+            d[1] = max_length
 
-print(data)
-data = [torch.tensor([i[0] for i in data]), [i[1] for i in data]]
-y = model(data)
-print(y)
-for i in np.argmax(y.detach().numpy(), axis=1):
-    print(i)
+    data = [torch.tensor([i[0] for i in data]), [i[1] for i in data]]
+    with torch.no_grad():
+        y = model(data)
 
+    atk = np.argmax(y.detach().numpy(), axis=1)
+    atk_ip = set([ip[i] for i in range(len(ip)) if atk[i]])
+
+    # with open('/etc/nginx/conf.d/deny.conf', 'a') as f:
+    #     for i in atk_ip:
+    #         f.write(f'deny {i};')
+
+    print(requests.post('https://port-0-atc-server-4c7jj2blhelykyu.sel4.cloudtype.app/block/ip/append', json={"ip": list(atk_ip)}))
+    requests.post('https://atc.moip.shop/attack/type', json={"ip": [], "attack_type":[]})
