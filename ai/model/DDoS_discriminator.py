@@ -244,4 +244,4 @@ class Discriminator(nn.Module):
         z, _ = self.encoder(z, mask)
         z = self.generator(z)
 
-        return z
+        return z[:, 0]
