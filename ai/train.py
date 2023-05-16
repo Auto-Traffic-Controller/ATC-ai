@@ -37,13 +37,15 @@ def define_argparser():
 
 config = define_argparser()
 
-filepath = "./ai/data/X-MASScan-2.json"
+filepath = "[./ai/data/X-MASScan-2.json]"
 packet_dataset = PacketDataset(config.filepath)
 
 
 def collate(batch):
-    return [[[i[0][0] for i in batch], [i[0][1] for i in batch]],
-            [i[1] for i in batch]]
+    return [[torch.tensor([i[0][0] for i in batch]),
+             [i[0][1] for i in batch]],
+            torch.tensor([i[1] for i in batch])]
+
 
 device = torch.device('cuda:0')
 packet_dataloader = DataLoader(packet_dataset, batch_size=config.batch_size, drop_last=True, collate_fn=collate)
@@ -54,7 +56,7 @@ optimizer = torch.optim.Adam(model.parameters(), lr=config.lr, betas=(.9, .98))
 
 for epoch in range(config.n_epochs):
     for mini_batch in packet_dataloader:
-        y = mini_batch[1]
+        y = mini_batch[1].to(device)
         y_hat = model(mini_batch[0].to(device))
 
         loss = crit(y_hat, y)
@@ -64,6 +66,8 @@ for epoch in range(config.n_epochs):
         optimizer.step()
 
 model_fn = './model/test.pt'
+model = torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
+
 torch.save(
     {
         'model': model.state_dict(),
