@@ -1,5 +1,7 @@
+import asyncio
 import sys
-
+import functools
+import time
 import requests
 
 import numpy as np
@@ -59,9 +61,9 @@ def get_value_from_stacked_dictionary(data, keys):
             return 'None'
 
 
-while True:
-    filename = sys.argv[1]
-    data = pd.read_json(filename)['_source']
+async def search(fn):
+    fn = fn
+    data = pd.read_json(fn)['_source']
     ip = []
 
     for i, packet in enumerate(data.values):
@@ -71,7 +73,7 @@ while True:
             packet_name = packet_name.split(":")
             temp.append(get_value_from_stacked_dictionary(packet, packet_name[1:]))
 
-        temp = sp.encode_as_ids('<cls>'+'<sep>'.join(temp))
+        temp = sp.encode_as_ids('<cls>' + '<sep>'.join(temp))
         data[i] = [temp, len(temp)]
     max_length = 90
     for d in data:
@@ -89,9 +91,36 @@ while True:
     atk = np.argmax(y.detach().numpy(), axis=1)
     atk_ip = set([ip[i] for i in range(len(ip)) if atk[i]])
 
-    # with open('/etc/nginx/conf.d/deny.conf', 'a') as f:
-    #     for i in atk_ip:
-    #         f.write(f'deny {i};')
+    return atk_ip
 
-    print(requests.post('https://port-0-atc-server-4c7jj2blhelykyu.sel4.cloudtype.app/block/ip/append', json={"ip": list(atk_ip)}))
-    requests.post('https://atc.moip.shop/attack/type', json={"ip": [], "attack_type":[]})
+
+async def post_result(atk_ip):
+    _loop = asyncio.get_event_loop()
+    post_result = await _loop.run_in_executor(
+        None,
+        functools.partial(
+            requests.post,
+            'https://port-0-atc-server-4c7jj2blhelykyu.sel4.cloudtype.app/block/ip',
+            json={"block_ip": list(atk_ip)}
+        )
+    )
+    return post_result
+
+
+async def main():
+    filename = sys.argv[1]
+
+    while True:
+        search_task = asyncio.create_task(search(filename))
+        atk_ip = await search_task
+        post_result_task = asyncio.create_task(post_result(atk_ip))
+        # with open('/etc/nginx/conf.d/deny.conf', 'a') as f:
+        #     for i in atk_ip:
+        #         f.write(f'deny {i};')
+
+        r = await post_result_task
+
+        # print(requests.post('https://atc.moip.shop/attack/type', json={"ip": ['10.24.1.0'], "attack_type":[]}))
+
+time.time()
+asyncio.run(main())
