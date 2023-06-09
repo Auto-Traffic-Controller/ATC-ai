@@ -95,7 +95,7 @@ async def search(fn):
 
 
 async def post_result(atk_ip):
-    _loop = asyncio.get_event_loop()
+    _loop = asyncio.get_running_loop()
     post_result = await _loop.run_in_executor(
         None,
         functools.partial(
@@ -113,6 +113,7 @@ async def main():
     while True:
         search_task = asyncio.create_task(search(filename))
         atk_ip = await search_task
+
         post_result_task = asyncio.create_task(post_result(atk_ip))
         # with open('/etc/nginx/conf.d/deny.conf', 'a') as f:
         #     for i in atk_ip:
@@ -122,5 +123,6 @@ async def main():
 
         # print(requests.post('https://atc.moip.shop/attack/type', json={"ip": ['10.24.1.0'], "attack_type":[]}))
 
-time.time()
+s = time.time()
 asyncio.run(main())
+print(f"it took {time.time()-s}")
